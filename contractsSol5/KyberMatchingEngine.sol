@@ -65,6 +65,23 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
         return true;
     }
 
+    function removeReserve(address reserve) external returns (bytes8) {
+        return reserveAddressToId[reserve];
+    }
+
+    // TODO: Implement if needed
+    function listPairForReserve(IKyberReserve reserve, IERC20 token, bool ethToToken, bool tokenToEth, bool add)
+        external
+        returns (bool)
+    {
+        reserve;
+        token;
+        ethToToken;
+        tokenToEth;
+        add;
+        return true;
+    }
+
     function setFeePayingPerReserveType(bool fpr, bool apr, bool bridge, bool utility, bool custom, bool orderbook)
         external onlyAdmin
     {
@@ -124,14 +141,20 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
         }
     }
 
-    function getReserveList(IERC20 src, IERC20 dest, bool isTokenToToken, bytes calldata hint)
+    function getReserveList(
+        IERC20 src,
+        IERC20 dest,
+        uint srcAmount,
+        uint networkFeeValue,
+        bool isTokenToToken,
+        bytes calldata hint
+    )
         external
         view
         returns (
             bytes8[] memory reserveIds,
             uint[] memory splitValuesBps,
-            bool[] memory isFeeAccounted,
-            ExtraProcessing extraProcess
+            bool[] memory isFeeAccounted
         )
     {
         HintErrors error;
@@ -139,8 +162,10 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
             reserveIds = (dest == ETH_TOKEN_ADDRESS) ? reservesPerTokenSrc[address(src)] : reservesPerTokenDest[address(dest)];
             splitValuesBps = populateSplitValuesBps(reserveIds.length);
             isFeeAccounted = getIsFeeAccountingReserves(reserveIds);
-            extraProcess = ExtraProcessing.NotRequired;
-            return (reserveIds, splitValuesBps, isFeeAccounted, extraProcess);
+            return getRatesAndDoMatch(
+                src, dest, srcAmount, networkFeeValue,
+                reserveIds, splitValuesBps, isFeeAccounted
+            );
         }
 
         TradeType tradeType;
@@ -174,7 +199,7 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
             ) = parseHint(hint);
         }
 
-        if (error != HintErrors.NoError) return (new bytes8[](0), new uint[](0), new bool[](0), ExtraProcessing.NotRequired);
+        if (error != HintErrors.NoError) return (new bytes8[](0), new uint[](0), new bool[](0));
 
         if (tradeType == TradeType.MaskIn) {
             splitValuesBps = populateSplitValuesBps(reserveIds.length);
@@ -186,7 +211,76 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
         }
 
         isFeeAccounted = getIsFeeAccountingReserves(reserveIds);
-        extraProcess = (tradeType == TradeType.Split) ? ExtraProcessing.NotRequired : ExtraProcessing.NonSplitProcessing;
+
+        if (tradeType == TradeType.Split) {
+            return (reserveIds, splitValuesBps, isFeeAccounted);
+        }
+        return getRatesAndDoMatch(
+            src, dest, srcAmount, networkFeeValue,
+            reserveIds, splitValuesBps, isFeeAccounted
+        );
+    }
+
+    // TODO: may need a struct to reduce number of params
+    // temporary reused 2 do match functions
+    function getRatesAndDoMatch(
+        IERC20 src,
+        IERC20 dest,
+        uint srcAmount,
+        uint networkFeeValue,
+        bytes8[] memory reserveIds,
+        uint[] memory splitValuesBps,
+        bool[] memory isFeeAccounted
+    )
+        internal view
+        returns (
+            bytes8[] memory selectedReserveIds,
+            uint[] memory selectedSplitValueBps,
+            bool[] memory selectedFeeAccounted
+        )
+    {
+        uint[] memory rates = new uint[](reserveIds.length);
+        uint[] memory amounts = new uint[](reserveIds.length);
+        uint[] memory feeAccountedBps = new uint[](reserveIds.length);
+
+        for(uint i = 0; i < rates.length; i++) {
+            if (src != ETH_TOKEN_ADDRESS) {
+                // token to eth trade
+                amounts[i] = srcAmount * splitValuesBps[i] / BPS;
+                feeAccountedBps[i] = isFeeAccounted[i] ? networkFeeValue : 0;
+            } else {
+                amounts[i] = isFeeAccounted[i] ? (srcAmount - networkFeeValue) * splitValuesBps[i] / BPS :
+                    srcAmount * splitValuesBps[i] / BPS;
+                feeAccountedBps[i] = 0;
+            }
+            // stack too deep :(
+            rates[i] = IKyberReserve(convertReserveIdToAddress(reserveIds[i])).getConversionRate(
+                src, dest, amounts[i], block.number
+            );
+        }
+
+        uint[] memory selectedIndexes;
+
+        if (src != ETH_TOKEN_ADDRESS) {
+            selectedIndexes = doMatchTokenToEth(
+                src, dest, amounts, feeAccountedBps, rates
+            );
+        } else {
+            selectedIndexes = doMatchEthToToken(
+                src, dest, amounts, rates
+            );
+        }
+
+        selectedReserveIds = new bytes8[](selectedIndexes.length);
+        selectedSplitValueBps = new uint[](selectedIndexes.length);
+        selectedFeeAccounted = new bool[](selectedIndexes.length);
+
+        for(uint i = 0; i < selectedIndexes.length; i++) {
+            require(selectedIndexes[i] < reserveIds.length, "invalid selected index");
+            selectedReserveIds[i] = reserveIds[selectedIndexes[i]];
+            selectedSplitValueBps[i] = splitValuesBps[selectedIndexes[i]];
+            selectedFeeAccounted[i] = isFeeAccounted[selectedIndexes[i]];
+        }
     }
 
     /// @notice Logic for masking out reserves
@@ -231,10 +325,10 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
     function doMatchTokenToEth(
         IERC20 src,
         IERC20 dest,
-        uint[] calldata srcAmounts,
-        uint[] calldata feeAccountedBps, // 0 for no fee. networkFeeBps when has fee
-        uint[] calldata rates
-    ) external view
+        uint[] memory srcAmounts,
+        uint[] memory feeAccountedBps, // 0 for no fee. networkFeeBps when has fee
+        uint[] memory rates
+    ) internal view
     returns (
         uint[] memory reserveIndexes
         )
@@ -303,9 +397,9 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
     function doMatchEthToToken(
         IERC20 src,
         IERC20 dest,
-        uint[] calldata srcAmounts,
-        uint[] calldata rates
-    ) external view
+        uint[] memory srcAmounts,
+        uint[] memory rates
+    ) internal view
     returns (
         uint[] memory reserveIndexes
         )
