@@ -118,7 +118,7 @@ contract('KyberNetworkProxy', function(accounts) {
         feeHandler = await FeeHandler.new(DAO.address, networkProxy.address, network.address, KNC.address, burnBlockInterval, DAO.address);
 
         // init and setup reserves
-        let result = await nwHelper.setupReserves(network, tokens, 3, 5, 0, 0, accounts, admin, operator);
+        let result = await nwHelper.setupReserves(network, tokens, 0, 5, 0, 0, accounts, admin, operator);
         reserveInstances = result.reserveInstances;
         numReserves += result.numAddedReserves * 1;
 
@@ -380,8 +380,8 @@ contract('KyberNetworkProxy', function(accounts) {
         
         
         let PlatformFeeValue = [0, 111];
-        let tradeType = [EMPTY_HINTTYPE, MASK_IN_HINTTYPE, MASK_OUT_HINTTYPE, SPLIT_HINTTYPE];
-        let typeStr = ['NO HINT', 'MASK_IN', 'MASK_OUT', 'SPLIT'];
+        let tradeType = [MASK_IN_HINTTYPE, MASK_OUT_HINTTYPE, SPLIT_HINTTYPE, EMPTY_HINTTYPE];
+        let typeStr = ['MASK_IN', 'MASK_OUT', 'SPLIT', 'NO HINT'];
 
         for(let i = 0; i < tradeType.length; i++) {
             let type = tradeType[i];

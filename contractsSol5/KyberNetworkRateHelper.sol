@@ -171,11 +171,14 @@ contract KyberNetworkRateHelper is IKyberNetworkRateHelper, Utils4 {
 
         if (!isTokenToEth) {
             // need to deduce network fee for e2t
+            uint extraFeeBps = 0;
             for (uint i = 0; i < tradingReserves.splitValuesBps.length; i++) {
                 if (tradingReserves.isFeePaying[i]) {
-                    actualSrcAmount -= tradingReserves.splitValuesBps[i] * networkFeeValue;
+                    extraFeeBps += tradingReserves.splitValuesBps[i];
                 }
             }
+            // better to pass network fee bps + trade wei
+            actualSrcAmount -= extraFeeBps * networkFeeValue / BPS;
         }
         require(actualSrcAmount > 0, "src amount is 0");
 
