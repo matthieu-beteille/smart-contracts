@@ -39,8 +39,8 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
     IKyberDAO               public   kyberDAO;
     IKyberMatchingEngine    public   matchingEngine;
     IKyberStorage           public   kyberStorage;
+    IKyberNetworkRateHelper public   rateHelper;
     IGasHelper              internal gasHelper;
-    IKyberNetworkRateHelper public rateHelper;
 
     NetworkFeeData internal networkFeeData; // data is feeBps and expiry block
     uint internal maxGasPriceValue = 50 * 1000 * 1000 * 1000; // 50 gwei
@@ -577,7 +577,6 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
 
         uint actualSrcWei = tData.tradeWei - tData.networkFeeWei - tData.platformFeeWei;
 
-        uint destAmount;
         uint splitAmount;
         uint amountSoFar;
 
@@ -585,8 +584,7 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
             splitAmount = (i == tData.ethToToken.ids.length - 1) ? (actualSrcWei - amountSoFar) :
                                 actualSrcWei * tData.ethToToken.splitValuesBps[i] / BPS;
             amountSoFar += splitAmount;
-            destAmount = calcDstQty(splitAmount, ETH_DECIMALS, tData.ethToToken.decimals, tData.ethToToken.rates[i]);
-            tData.actualDestAmount += destAmount;
+            tData.actualDestAmount += calcDstQty(splitAmount, ETH_DECIMALS, tData.ethToToken.decimals, tData.ethToToken.rates[i]);
         }
         uint rate = calcRateFromQty(actualSrcWei, tData.actualDestAmount, ETH_DECIMALS, tData.ethToToken.decimals);
         tData.destAmountWithNetworkFee = calcDstQty(tData.tradeWei - tData.networkFeeWei, ETH_DECIMALS, 

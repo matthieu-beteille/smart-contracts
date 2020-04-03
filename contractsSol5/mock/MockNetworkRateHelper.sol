@@ -56,7 +56,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
             uint[] memory rates,
             uint[] memory splitValuesBps,
             bool[] memory isFeePaying,
-            bytes8[] memory ids)
+            bytes32[] memory ids)
     {
         //initialisation
         TradeData memory tData = initAndValidateTradeData(src, dest, info);
@@ -203,7 +203,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         uint[] memory rates,
         uint[] memory splitValuesBps,
         bool[] memory isFeePaying,
-        bytes8[] memory ids
+        bytes32[] memory ids
         )
     {
         uint tokenToEthNumReserves = tData.tokenToEth.addresses.length;
@@ -212,7 +212,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         rates = new uint[](totalNumReserves);
         splitValuesBps = new uint[](totalNumReserves);
         isFeePaying = new bool[](totalNumReserves);
-        ids = new bytes8[](totalNumReserves);
+        ids = new bytes32[](totalNumReserves);
 
         results = new uint[](uint(ResultIndex.resultLength));
         results[uint(ResultIndex.t2eNumReserves)] = tokenToEthNumReserves;
@@ -254,7 +254,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         tradingReserves.rates = new uint[](1);
         tradingReserves.splitValuesBps = new uint[](1);
         tradingReserves.isFeePaying = new bool[](1);
-        tradingReserves.ids = new bytes8[](1);
+        tradingReserves.ids = new bytes32[](1);
 
         //save information
         tradingReserves.addresses[0] = reserve;
