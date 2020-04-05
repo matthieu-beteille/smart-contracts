@@ -10,11 +10,6 @@ interface IKyberNetworkRateHelper {
     function removeReserve(address reserve, bytes32 reserveId) external returns (bool);
     function setMatchingEngineContract(IKyberMatchingEngine _newMatchingEngine) external;
 
-    function calcTradeSrcAmount(
-        uint srcDecimals, uint destDecimals, uint destAmount,
-        uint[] calldata rates, uint[] calldata splitValuesBps)
-        external pure returns (uint srcAmount);
-
     function calculateTradeData(
         IERC20 token,
         uint srcAmount,

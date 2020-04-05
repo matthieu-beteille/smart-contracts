@@ -135,6 +135,7 @@ contract KyberStorage is IKyberStorage {
         );
         reserveIdToAddresses[reserveId][0] = address(0);
         reserveAddressToId[reserve] = bytes32(0);
+        return true;
     }
 
     /// @notice should be called off chain
