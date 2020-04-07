@@ -21,6 +21,9 @@ import "./IKyberStorage.sol";
 *           - return all data to kyber Network 
 */
 contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, WithdrawableNoModifiers {
+    
+    uint constant internal MAX_NEGLIGIBLE_RATE_DIFF 10;
+
     uint            public negligibleRateDiffBps = 5; // 1 bps is 0.01%
     IKyberNetwork   public networkContract;
     IKyberStorage   public kyberStorage;
@@ -39,7 +42,9 @@ contract KyberMatchingEngine is KyberHintHandler, IKyberMatchingEngine, Withdraw
 
     function setNegligbleRateDiffBps(uint _negligibleRateDiffBps) external returns (bool) {
         onlyNetwork();
-        require(_negligibleRateDiffBps <= BPS, "rateDiffBps > BPS"); // at most 100%
+        require(_negligibleRateDiffBps <= MAX_NEGLIGIBLE_RATE_DIFF, 
+            "neglibgible rate difference more then max");
+            
         negligibleRateDiffBps = _negligibleRateDiffBps;
         return true;
     }
