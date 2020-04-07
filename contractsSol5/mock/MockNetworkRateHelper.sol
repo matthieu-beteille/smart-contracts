@@ -54,6 +54,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
             uint[] memory results,
             IKyberReserve[] memory reserveAddresses,
             uint[] memory rates,
+            uint[] memory srcAmounts,
             uint[] memory splitValuesBps,
             bool[] memory isFeePaying,
             bytes32[] memory ids)
@@ -65,7 +66,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
 
         if (tData.tradeWei == 0) {
             //initialise ethToToken properties and store zero rate, will return zero rate since dest amounts are zero
-            storeTradeReserveData(tData.ethToToken, IKyberReserve(0), 0, false);
+            storeTradeReserveData(tData.ethToToken, IKyberReserve(0), 0, 0, false);
             return packResults(tData);
         }
 
@@ -83,7 +84,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
     function calculateTradeWeiAndFeeData(IERC20 src, IERC20 dest, uint srcAmount, bytes memory hint, TradeData memory tData) internal view {
         if (src == ETH_TOKEN_ADDRESS) {
             tData.tradeWei = srcAmount;
-            storeTradeReserveData(tData.tokenToEth, IKyberReserve(0), PRECISION, false);
+            storeTradeReserveData(tData.tokenToEth, IKyberReserve(0), PRECISION, srcAmount, false);
             return;
         }
 
@@ -106,14 +107,15 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         );
 
         uint destAmount;
-        uint splitAmount;
         uint amountSoFar;
 
+        tData.tokenToEth.srcAmounts = new uint[](tData.tokenToEth.ids.length);
+
         for(uint i = 0; i < tData.tokenToEth.ids.length; i++) {
-            splitAmount = (i == tData.tokenToEth.ids.length - 1) ? (tData.srcAmount - amountSoFar) :
+            tData.tokenToEth.srcAmounts[i]= (i == tData.tokenToEth.ids.length - 1) ? (tData.srcAmount - amountSoFar) :
                                 tData.srcAmount * tData.tokenToEth.splitValuesBps[i] / BPS;
-            amountSoFar += splitAmount;
-            destAmount = calcDstQty(splitAmount, tData.tokenToEth.decimals, ETH_DECIMALS, tData.tokenToEth.rates[i]);
+            amountSoFar += tData.tokenToEth.srcAmounts[i];
+            destAmount = calcDstQty(tData.tokenToEth.srcAmounts[i], tData.tokenToEth.decimals, ETH_DECIMALS, tData.tokenToEth.rates[i]);
             tData.tradeWei += destAmount;
             if (tData.tokenToEth.isFeePaying[i]) {
                 tData.feePayingReservesBps += tData.tokenToEth.splitValuesBps[i];
@@ -131,7 +133,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
             tData.actualDestAmount = actualSrcWei;
             tData.destAmountWithNetworkFee = tData.tradeWei - tData.networkFeeWei;
             tData.destAmountNoFee = tData.tradeWei;
-            storeTradeReserveData(tData.ethToToken, IKyberReserve(0), PRECISION, false);
+            storeTradeReserveData(tData.ethToToken, IKyberReserve(0), PRECISION, actualSrcWei, false);
             return;
         }
         (
@@ -162,14 +164,15 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         actualSrcWei = tData.tradeWei - tData.networkFeeWei - tData.platformFeeWei;
 
         uint destAmount;
-        uint splitAmount;
         uint amountSoFar;
 
+        tData.ethToToken.srcAmounts = new uint[](tData.ethToToken.ids.length);
+
         for(uint i = 0; i < tData.ethToToken.ids.length; i++) {
-            splitAmount = (i == tData.ethToToken.ids.length - 1) ? (actualSrcWei - amountSoFar) :
+            tData.ethToToken.srcAmounts[i] = (i == tData.ethToToken.ids.length - 1) ? (actualSrcWei - amountSoFar) :
                                 actualSrcWei * tData.ethToToken.splitValuesBps[i] / BPS;
-            amountSoFar += splitAmount;
-            destAmount = calcDstQty(splitAmount, ETH_DECIMALS, tData.ethToToken.decimals, tData.ethToToken.rates[i]);
+            amountSoFar += tData.ethToToken.srcAmounts[i];
+            destAmount = calcDstQty(tData.ethToToken.srcAmounts[i], ETH_DECIMALS, tData.ethToToken.decimals, tData.ethToToken.rates[i]);
             tData.actualDestAmount += destAmount;
         }
         uint rate = calcRateFromQty(actualSrcWei, tData.actualDestAmount, ETH_DECIMALS, tData.ethToToken.decimals);
@@ -201,6 +204,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         uint[] memory results,
         IKyberReserve[] memory reserveAddresses,
         uint[] memory rates,
+        uint[] memory srcAmounts,
         uint[] memory splitValuesBps,
         bool[] memory isFeePaying,
         bytes32[] memory ids
@@ -210,6 +214,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         uint totalNumReserves = tokenToEthNumReserves + tData.ethToToken.addresses.length;
         reserveAddresses = new IKyberReserve[](totalNumReserves);
         rates = new uint[](totalNumReserves);
+        srcAmounts = new uint[](totalNumReserves);
         splitValuesBps = new uint[](totalNumReserves);
         isFeePaying = new bool[](totalNumReserves);
         ids = new bytes32[](totalNumReserves);
@@ -227,6 +232,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         for (uint i = 0; i < tokenToEthNumReserves; i++) {
             reserveAddresses[i] = tData.tokenToEth.addresses[i];
             rates[i] = tData.tokenToEth.rates[i];
+            srcAmounts[i] = tData.tokenToEth.srcAmounts[i];
             splitValuesBps[i] = tData.tokenToEth.splitValuesBps[i];
             isFeePaying[i] = tData.tokenToEth.isFeePaying[i];
             ids[i] = tData.tokenToEth.ids[i];
@@ -236,6 +242,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         for (uint i = tokenToEthNumReserves; i < totalNumReserves; i++) {
             reserveAddresses[i] = tData.ethToToken.addresses[i - tokenToEthNumReserves];
             rates[i] = tData.ethToToken.rates[i - tokenToEthNumReserves];
+            srcAmounts[i] = tData.ethToToken.srcAmounts[i - tokenToEthNumReserves];
             splitValuesBps[i] = tData.ethToToken.splitValuesBps[i - tokenToEthNumReserves];
             isFeePaying[i] = tData.ethToToken.isFeePaying[i - tokenToEthNumReserves];
             ids[i] = tData.ethToToken.ids[i - tokenToEthNumReserves];
@@ -245,13 +252,14 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
     /// @notice Stores reserve and rate information, either from searchBestRate function,
     /// or null reserve and zero rate due to exceptions (Eg. tradeWei is zero, invalid hint)
     /// @dev Re-initialises the relevant array lengths, and stores the information
-    function storeTradeReserveData(TradingReserves memory tradingReserves, IKyberReserve reserve, uint rate, 
-        bool isFeePaying) 
+    function storeTradeReserveData(TradingReserves memory tradingReserves, IKyberReserve reserve, uint rate, uint srcAmount,
+        bool isFeePaying)
         internal pure 
     {
         //init arrays
         tradingReserves.addresses = new IKyberReserve[](1);
         tradingReserves.rates = new uint[](1);
+        tradingReserves.srcAmounts = new uint[](1);
         tradingReserves.splitValuesBps = new uint[](1);
         tradingReserves.isFeePaying = new bool[](1);
         tradingReserves.ids = new bytes32[](1);
@@ -259,6 +267,7 @@ contract MockNetworkRateHelper is KyberNetworkRateHelper {
         //save information
         tradingReserves.addresses[0] = reserve;
         tradingReserves.rates[0] = rate;
+        tradingReserves.srcAmounts[0] = srcAmount;
         tradingReserves.splitValuesBps[0] = BPS; //max percentage amount
         tradingReserves.isFeePaying[0] = isFeePaying;
     }

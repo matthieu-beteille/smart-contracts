@@ -1089,7 +1089,7 @@ contract('KyberNetwork', function(accounts) {
                 let hintType = tradeType;
                 it("should perform a T2E trade (different hint types, with maxDestAmount) and check balances change as expected", async() => {
                     let platformFeeBps = new BN(50);
-                    let maxDestAmt = new BN(20).mul(new BN(10).pow(destDecimals));
+                    let maxDestAmt = (new BN(1).mul(new BN(10).pow(ethDecimals))).div(new BN(3));
                     info = [srcQty, networkFeeBps, platformFeeBps];
                     hint = await nwHelper.getHint(rateHelper, matchingEngine, reserveInstances, hintType, undefined, srcToken.address, ethAddress, srcQty);
                     expectedResult = await networkRateHelper.calcRatesAndAmounts(srcToken.address, ethAddress, info, hint);
@@ -1109,7 +1109,7 @@ contract('KyberNetwork', function(accounts) {
 
                 it("should perform a E2T trade (different hint types, with maxDestAmount) and check balances change as expected", async() => {
                     let platformFeeBps = new BN(50);
-                    let maxDestAmt = new BN(20).mul(new BN(10).pow(destDecimals));
+                    let maxDestAmt = (new BN(20).mul(new BN(10).pow(destDecimals))).div(new BN(3));
                     hint = await nwHelper.getHint(rateHelper, matchingEngine, reserveInstances, hintType, undefined, ethAddress, destToken.address, ethSrcQty);
                     info = [ethSrcQty, networkFeeBps, platformFeeBps];
                     expectedResult = await networkRateHelper.calcRatesAndAmounts(ethAddress, destToken.address, info, hint);
@@ -1129,7 +1129,7 @@ contract('KyberNetwork', function(accounts) {
 
                 it("should perform a T2T trade (different hint types, with maxDestAmount) and check balances change as expected", async() => {
                     let platformFeeBps = new BN(50);
-                    let maxDestAmt = new BN(20).mul(new BN(10).pow(destDecimals));
+                    let maxDestAmt = (new BN(20).mul(new BN(10).pow(destDecimals))).div(new BN(3));
                     hint = await nwHelper.getHint(rateHelper, matchingEngine, reserveInstances, hintType, undefined, srcToken.address, destToken.address, srcQty);
                     info = [srcQty, networkFeeBps, platformFeeBps];
                     expectedResult = await networkRateHelper.calcRatesAndAmounts(srcToken.address, destToken.address, info, hint);

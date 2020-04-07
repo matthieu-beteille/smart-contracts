@@ -415,6 +415,7 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
     struct TradingReserves {
         IKyberReserve[] addresses;
         bytes32[] ids;
+        uint[] srcAmounts;
         uint[] rates;
         bool[] isFeePaying;
         uint[] splitValuesBps;
@@ -547,15 +548,21 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
 
     // calculate data given token to eth trade data
     function calculateTradeWeiAndFeeData(TradeData memory tData) internal pure {
+        tData.tokenToEth.srcAmounts = new uint[](tData.tokenToEth.ids.length);
+
         uint destAmount;
-        uint splitAmount;
         uint amountSoFar;
 
         for(uint i = 0; i < tData.tokenToEth.ids.length; i++) {
-            splitAmount = (i == tData.tokenToEth.ids.length - 1) ? (tData.input.srcAmount - amountSoFar) :
+            tData.tokenToEth.srcAmounts[i] = (i == tData.tokenToEth.ids.length - 1) ? (tData.input.srcAmount - amountSoFar) :
                                 tData.input.srcAmount * tData.tokenToEth.splitValuesBps[i] / BPS;
-            amountSoFar += splitAmount;
-            destAmount = calcDstQty(splitAmount, tData.tokenToEth.decimals, ETH_DECIMALS, tData.tokenToEth.rates[i]);
+            amountSoFar += tData.tokenToEth.srcAmounts[i];
+            destAmount = calcDstQty(
+                tData.tokenToEth.srcAmounts[i],
+                tData.tokenToEth.decimals,
+                ETH_DECIMALS,
+                tData.tokenToEth.rates[i]
+            );
             tData.tradeWei += destAmount;
             if (tData.tokenToEth.isFeePaying[i]) {
                 tData.feePayingReservesBps += tData.tokenToEth.splitValuesBps[i];
@@ -577,15 +584,21 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
 
         uint actualSrcWei = tData.tradeWei - tData.networkFeeWei - tData.platformFeeWei;
 
-        uint splitAmount;
         uint amountSoFar;
 
+        tData.ethToToken.srcAmounts = new uint[](tData.ethToToken.ids.length);
         for(uint i = 0; i < tData.ethToToken.ids.length; i++) {
-            splitAmount = (i == tData.ethToToken.ids.length - 1) ? (actualSrcWei - amountSoFar) :
+            tData.ethToToken.srcAmounts[i] = (i == tData.ethToToken.ids.length - 1) ? (actualSrcWei - amountSoFar) :
                                 actualSrcWei * tData.ethToToken.splitValuesBps[i] / BPS;
-            amountSoFar += splitAmount;
-            tData.actualDestAmount += calcDstQty(splitAmount, ETH_DECIMALS, tData.ethToToken.decimals, tData.ethToToken.rates[i]);
+            amountSoFar += tData.ethToToken.srcAmounts[i];
+            tData.actualDestAmount += calcDstQty(
+                tData.ethToToken.srcAmounts[i],
+                ETH_DECIMALS,
+                tData.ethToToken.decimals,
+                tData.ethToToken.rates[i]
+            );
         }
+
         uint rate = calcRateFromQty(actualSrcWei, tData.actualDestAmount, ETH_DECIMALS, tData.ethToToken.decimals);
         tData.destAmountWithNetworkFee = calcDstQty(tData.tradeWei - tData.networkFeeWei, ETH_DECIMALS, 
             tData.ethToToken.decimals, rate);
@@ -662,18 +675,28 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
     }
 
     function calcTradeSrcAmount(uint srcDecimals, uint destDecimals, uint destAmount, uint[] memory rates,
-                                uint[] memory splitValuesBps)
-        internal pure returns (uint srcAmount)
+                                uint[] memory splitValuesBps, uint[] memory curSrcAmounts)
+        internal pure returns (uint srcAmount, uint[] memory newSrcAmounts)
     {
         uint totalSplitRates = 0;
         for(uint i = 0; i < rates.length; i++) {
             totalSplitRates += splitValuesBps[i] * rates[i];
         }
-        // total split bps should be = BPS
-        uint averageRate = totalSplitRates / BPS;
-        require(averageRate > 0, "average rate is 0");
 
-        srcAmount = calcSrcQty(destAmount, srcDecimals, destDecimals, averageRate);
+        uint destAmountSoFar;
+        uint destAmountSplit;
+        newSrcAmounts = new uint[](rates.length);
+
+        for(uint i = 0; i < rates.length; i++) {
+            destAmountSplit = (i == rates.length - 1) ? (destAmount - destAmountSoFar) :
+                    destAmount * splitValuesBps[i] * rates[i] / totalSplitRates;
+            destAmountSoFar += destAmountSplit;
+
+            newSrcAmounts[i] = calcSrcQty(destAmountSplit, srcDecimals, destDecimals, rates[i]);
+            require(newSrcAmounts[i] <= curSrcAmounts[i], "new src amount is big");
+
+            srcAmount += newSrcAmounts[i];
+        }
     }
 
     /// @notice Recalculates tradeWei, network and platform fees, and actual source amount needed for the trade
@@ -683,8 +706,8 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
     {
         uint weiAfterFees;
         if (tData.input.dest != ETH_TOKEN_ADDRESS) {
-            weiAfterFees = calcTradeSrcAmount(ETH_DECIMALS, tData.ethToToken.decimals, tData.input.maxDestAmount,
-                tData.ethToToken.rates, tData.ethToToken.splitValuesBps);
+            (weiAfterFees, tData.ethToToken.srcAmounts) = calcTradeSrcAmount(ETH_DECIMALS, tData.ethToToken.decimals, tData.input.maxDestAmount,
+                tData.ethToToken.rates, tData.ethToToken.splitValuesBps, tData.ethToToken.srcAmounts);
         } else {
             weiAfterFees = tData.input.maxDestAmount;
         }
@@ -697,8 +720,8 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
         tData.platformFeeWei = tData.tradeWei * tData.input.platformFeeBps / BPS;
 
         if (tData.input.src != ETH_TOKEN_ADDRESS) {
-            actualSrcAmount = calcTradeSrcAmount(tData.tokenToEth.decimals, ETH_DECIMALS, tData.tradeWei,
-                tData.tokenToEth.rates, tData.tokenToEth.splitValuesBps);
+            (actualSrcAmount, tData.tokenToEth.srcAmounts) = calcTradeSrcAmount(tData.tokenToEth.decimals, ETH_DECIMALS, tData.tradeWei,
+                tData.tokenToEth.rates, tData.tokenToEth.splitValuesBps, tData.tokenToEth.srcAmounts);
         } else {
             actualSrcAmount = tData.tradeWei;
         }
@@ -815,10 +838,11 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
         internal
         returns(bool)
     {
+        amount;
         if (src == dest) {
             //E2E, need not do anything except for T2E, transfer ETH to destAddress
             if (destAddress != (address(this))) {
-                (bool success, ) = destAddress.call.value(amount)("");
+                (bool success, ) = destAddress.call.value(expectedDestAmount)("");
                 require(success, "send dest qty failed");
             }
             return true;
@@ -826,17 +850,15 @@ contract KyberNetwork is Withdrawable3, Utils4, IKyberNetwork, ReentrancyGuard {
 
         TradingReserves memory reservesData = src == ETH_TOKEN_ADDRESS? tData.ethToToken : tData.tokenToEth;
         uint callValue;
-        uint srcAmountSoFar;
 
         for(uint i = 0; i < reservesData.addresses.length; i++) {
-            uint splitAmount = i == (reservesData.splitValuesBps.length - 1) ? (amount - srcAmountSoFar) :
-                reservesData.splitValuesBps[i] * amount / BPS;
-            srcAmountSoFar += splitAmount;
-            callValue = (src == ETH_TOKEN_ADDRESS)? splitAmount : 0;
+            callValue = (src == ETH_TOKEN_ADDRESS) ? reservesData.srcAmounts[i] : 0;
 
             // reserve sends tokens/eth to network. network sends it to destination
-            require(reservesData.addresses[i].trade.value(callValue)(src, splitAmount, dest, address(this),
-                        reservesData.rates[i], true));
+            require(reservesData.addresses[i].trade.value(callValue)(
+                src, reservesData.srcAmounts[i], dest,
+                address(this), reservesData.rates[i], true)
+            );
         }
 
         if (destAddress != address(this)) {

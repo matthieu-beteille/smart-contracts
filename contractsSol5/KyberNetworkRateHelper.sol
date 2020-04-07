@@ -42,6 +42,7 @@ contract KyberNetworkRateHelper is IKyberNetworkRateHelper, Utils4 {
         IKyberReserve[] addresses;
         bytes32[] ids;
         uint[] rates;
+        uint[] srcAmounts;
         bool[] isFeePaying;
         uint[] splitValuesBps;
         uint decimals;
