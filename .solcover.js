@@ -25,7 +25,7 @@ function removeV4ArtifactsDir(config) {
 
 module.exports = {
     providerOptions: {
-        "default_balance_ether": 50000
+        "default_balance_ether": 100000000000000
     },
     istanbulReporter: ['html','json'],
     onCompileComplete: moveFiles,
